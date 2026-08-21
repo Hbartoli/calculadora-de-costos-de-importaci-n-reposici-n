@@ -175,3 +175,5 @@ if uploaded_file is not None:
             )
             fig.update_traces(textposition='inside', textinfo='percent+label')
             st.plotly_chart(fig, use_container_width=True)
+            
+            with st.expander("🔍 Ver Sábana de Datos e Impuestos Detallados por Producto (Base Oficial)"):
