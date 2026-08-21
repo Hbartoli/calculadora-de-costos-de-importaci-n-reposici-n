@@ -3,11 +3,13 @@ import pandas as pd
 import plotly.express as px
 import io
 
+# Configuración de la página de Streamlit
 st.set_page_config(page_title="Calculadora Avanzada de Importación", layout="wide", page_icon="📈")
 
 st.title("📈 Calculadora Avanzada de Costos de Importación, Reposición y Pricing")
-st.markdown("Herramienta corporativa con **Markup Inverso**, **IVA dinámico** y **Estrategia Cambiaria de Fletes**.")
+st.markdown("Herramienta corporativa con **Prorrateo por Cantidad**, **Markup Inverso** e **IVA dinámico**.")
 
+# --- PANEL LATERAL: Parámetros Globales ---
 st.sidebar.header("💵 1. Variables Cambiarias y Multimoneda")
 dolar_oficial = st.sidebar.number_input("Dólar Oficial (Aduana / AFIP)", min_value=1.0, value=980.0, step=5.0)
 dolar_financiero = st.sidebar.number_input("Dólar Financiero / CCL (Reposición Real)", min_value=1.0, value=1280.0, step=5.0)
@@ -19,7 +21,8 @@ cny_usd = st.sidebar.number_input("Yuan Chino (CNY/USD)", min_value=0.01, value=
 st.sidebar.header("🚢 2. Modalidad de Pago de Logística Internacional")
 pago_logistica_afuera = st.sidebar.checkbox(
     "¿Flete y Seguro se pagan afuera / con dólares financieros propios?", 
-    value=True
+    value=True,
+    help="ACTIVADO: Valúa el flete/seguro al Dólar Financiero (Escenario Real/Libre). DESACTIVADO: Valúa el flete/seguro al Dólar Oficial."
 )
 
 st.sidebar.header("📐 3. Alícuotas Fiscales Globales (%)")
@@ -35,27 +38,36 @@ tasa_rezago_pct = st.sidebar.number_input("Tasa de Rezago / Almacenaje (% del CI
 gastos_despacho_fijos_ars = st.sidebar.number_input("Gastos Fijos Despacho/Terminal (ARS Total)", min_value=0.0, value=450000.0, step=10000.0)
 honorarios_despachante_pct = st.sidebar.number_input("Honorarios Despachante (% del CIF)", min_value=0.0, value=1.0, step=0.1)
 
+# --- LÓGICA CORE DE CÁLCULO ---
 def calcular_simulacion_completa(df_input):
     df = df_input.copy()
     
-    def convertir_a_usd(row):
+    # Asegurar mínimos en cantidad
+    df['cantidad'] = df['cantidad'].apply(lambda x: max(1, int(x)))
+    
+    # 1. Normalización Multimoneda a USD (FOB Total)
+    def obtener_fob_total_usd(row):
         moneda = str(row['moneda_origen']).upper().strip()
-        val = row['precio_origen']
-        if moneda == 'USD': return val
-        elif moneda == 'EUR': return val * eur_usd
-        elif moneda == 'CNY': return val * cny_usd
-        else: return val
+        val_unitario = row['precio_origen']
+        cant = row['cantidad']
+        fob_u_usd = val_unitario
+        if moneda == 'EUR': fob_u_usd = val_unitario * eur_usd
+        elif moneda == 'CNY': fob_u_usd = val_unitario * cny_usd
+        return fob_u_usd * cant
         
-    df['fob_usd'] = df.apply(convertir_a_usd, axis=1)
-    df['cif_usd'] = df['fob_usd'] + df['flete_usd'] + df['seguro_usd']
-    df['cif_ars_oficial'] = df['cif_usd'] * dolar_oficial
+    df['fob_total_usd'] = df.apply(obtener_fob_total_usd, axis=1)
     
-    df['derechos_importacion_ars'] = df['cif_ars_oficial'] * (df['arancel_pct'] / 100)
-    df['tasa_estadistica_ars'] = df['cif_ars_oficial'] * (tasa_estadistica_pct / 100)
-    df['impuesto_pais_ars'] = df['cif_ars_oficial'] * (impuesto_pais_pct / 100)
-    df['tasa_rezago_ars'] = df['cif_ars_oficial'] * (tasa_rezago_pct / 100)
+    # 2. Base CIF General (Total del Embarque)
+    df['cif_total_usd'] = df['fob_total_usd'] + df['flete_usd'] + df['seguro_usd']
+    df['cif_total_ars_oficial'] = df['cif_total_usd'] * dolar_oficial
     
-    base_iva = df['cif_ars_oficial'] + df['derechos_importacion_ars'] + df['tasa_estadistica_ars'] + df['tasa_rezago_ars']
+    # 3. Derechos e Impuestos Aduaneros Totales
+    df['derechos_importacion_ars'] = df['cif_total_ars_oficial'] * (df['arancel_pct'] / 100)
+    df['tasa_estadistica_ars'] = df['cif_total_ars_oficial'] * (tasa_estadistica_pct / 100)
+    df['impuesto_pais_ars'] = df['cif_total_ars_oficial'] * (impuesto_pais_pct / 100)
+    df['tasa_rezago_ars'] = df['cif_total_ars_oficial'] * (tasa_rezago_pct / 100)
+    
+    base_iva = df['cif_total_ars_oficial'] + df['derechos_importacion_ars'] + df['tasa_estadistica_ars'] + df['tasa_rezago_ars']
     
     df['iva_ars'] = base_iva * (iva_pct / 100)
     df['iva_adicional_ars'] = base_iva * (iva_adicional_pct / 100)
@@ -68,82 +80,92 @@ def calcular_simulacion_completa(df_input):
         df['anticipo_ganancias_ars'] + df['ingresos_brutos_ars']
     )
     
-    total_cif_general = df['cif_ars_oficial'].sum()
-    if total_cif_general > 0:
-        df['gastos_fijos_proporcional_ars'] = (df['cif_ars_oficial'] / total_cif_general) * gastos_despacho_fijos_ars
+    # 4. Gastos Locales de Despacho (Prorrateo entre ítems)
+    total_cif_global = df['cif_total_ars_oficial'].sum()
+    if total_cif_global > 0:
+        df['gastos_fijos_proporcional_ars'] = (df['cif_total_ars_oficial'] / total_cif_global) * gastos_despacho_fijos_ars
     else:
         df['gastos_fijos_proporcional_ars'] = 0.0
         
-    df['honorarios_despachante_ars'] = df['cif_ars_oficial'] * (honorarios_despachante_pct / 100)
+    df['honorarios_despachante_ars'] = df['cif_total_ars_oficial'] * (honorarios_despachante_pct / 100)
     df['total_gastos_locales_ars'] = df['gastos_fijos_proporcional_ars'] + df['honorarios_despachante_ars']
     
-    df['fob_reposicion_real_ars'] = df['fob_usd'] * dolar_financiero
-    
+    # 5. Brecha y Costos de Reposición Totales
+    df['fob_reposicion_real_ars'] = df['fob_total_usd'] * dolar_financiero
     tc_logistica = dolar_financiero if pago_logistica_afuera else dolar_oficial
     df['flete_seguro_real_ars'] = (df['flete_usd'] + df['seguro_usd']) * tc_logistica
     
-    df['costo_total_reposicion_ars'] = (
+    df['costo_total_reposicion_batch_ars'] = (
         df['fob_reposicion_real_ars'] + df['flete_seguro_real_ars'] + 
         df['total_impuestos_y_tasas_ars'] + df['total_gastos_locales_ars']
     )
     
-    df['costo_total_real_usd_financiero'] = df['costo_total_reposicion_ars'] / dolar_financiero
-    df['factor_nacionalizacion'] = df['costo_total_real_usd_financiero'] / df['fob_usd']
+    # 6. MÉTRICAS UNITARIAS CRÍTICAS (La división por piezas)
+    df['costo_reposicion_unitario_ars'] = df['costo_total_reposicion_batch_ars'] / df['cantidad']
+    df['fob_unitario_usd'] = df['fob_total_usd'] / df['cantidad']
     
-    def calcular_precio_neto(row):
+    # Factor de nacionalización (Costo Unitario Real ARS pasado a USD Financiero / FOB Unitario USD)
+    df['factor_nacionalizacion'] = (df['costo_reposicion_unitario_ars'] / dolar_financiero) / df['fob_unitario_usd']
+    
+    # 7. Pricing Unitario Local (Markup Inverso)
+    def calcular_precio_neto_u(row):
         margen = row['margen_pretendido_pct']
-        if margen >= 100:
-            return row['costo_total_reposicion_ars'] * 2
-        return row['costo_total_reposicion_ars'] / (1 - (margen / 100))
+        if margen >= 100: return row['costo_reposicion_unitario_ars'] * 2
+        return row['costo_reposicion_unitario_ars'] / (1 - (margen / 100))
         
-    df['precio_venta_neto_ars'] = df.apply(calcular_precio_neto, axis=1)
-    df['utilidad_pretendida_ars'] = df['precio_venta_neto_ars'] - df['costo_total_reposicion_ars']
+    df['precio_venta_neto_unitario_ars'] = df.apply(calcular_precio_neto_u, axis=1)
+    df['utilidad_neta_unitaria_ars'] = df['precio_venta_neto_unitario_ars'] - df['costo_reposicion_unitario_ars']
     
-    df['iva_ventas_ars'] = df['precio_venta_neto_ars'] * (df['iva_ventas_pct'] / 100)
-    df['precio_venta_final_con_iva_ars'] = df['precio_venta_neto_ars'] + df['iva_ventas_ars']
+    df['iva_ventas_unitario_ars'] = df['precio_venta_neto_unitario_ars'] * (df['iva_ventas_pct'] / 100)
+    df['precio_venta_final_unitario_con_iva_ars'] = df['precio_venta_neto_unitario_ars'] + df['iva_ventas_unitario_ars']
+    
+    # Proyección de facturación total del lote
+    df['facturacion_total_lote_con_iva_ars'] = df['precio_venta_final_unitario_con_iva_ars'] * df['cantidad']
     
     return df
 
+# --- INTERFAZ CENTRAL ---
 uploaded_file = st.file_uploader("📂 Cargá tu archivo de productos (CSV)", type=["csv"])
 
 if uploaded_file is not None:
     try:
         df_origen = pd.read_csv(uploaded_file)
-        columnas_requeridas = ['item', 'moneda_origen', 'precio_origen', 'flete_usd', 'seguro_usd', 'arancel_pct', 'margen_pretendido_pct', 'iva_ventas_pct']
+        columnas_requeridas = ['item', 'cantidad', 'moneda_origen', 'precio_origen', 'flete_usd', 'seguro_usd', 'arancel_pct', 'margen_pretendido_pct', 'iva_ventas_pct']
         
         if not all(col in df_origen.columns for col in columnas_requeridas):
             st.error(f"El archivo debe contener exactamente estas columnas: {', '.join(columnas_requeridas)}")
         else:
             df_resultado = calcular_simulacion_completa(df_origen)
             
-            tot_fob_usd = df_resultado['fob_usd'].sum()
+            tot_fob_usd = df_resultado['fob_total_usd'].sum()
             tot_imp_ars = df_resultado['total_impuestos_y_tasas_ars'].sum()
-            tot_costo_ars = df_resultado['costo_total_reposicion_ars'].sum()
-            tot_venta_publico = df_resultado['precio_venta_final_con_iva_ars'].sum()
+            tot_costo_ars = df_resultado['costo_total_reposicion_batch_ars'].sum()
+            tot_venta_publico = df_resultado['facturacion_total_lote_con_iva_ars'].sum()
             
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("FOB Total (USD Equivalente)", f"USD {tot_fob_usd:,.2f}")
+            c1.metric("FOB Total Operación", f"USD {tot_fob_usd:,.2f}")
             c2.metric("Impuestos + Tasas Totales", f"ARS {tot_imp_ars:,.2f}")
-            c3.metric("Costo Reposición Consolidado", f"ARS {tot_costo_ars:,.2f}")
-            c4.metric("Facturación Proyectada (c/IVA)", f"ARS {tot_venta_publico:,.2f}")
+            c3.metric("Inversión de Reposición Total", f"ARS {tot_costo_ars:,.2f}")
+            c4.metric("Facturación Proyectada Lote", f"ARS {tot_venta_publico:,.2f}")
             
             st.write("---")
             
-            st.subheader("📋 Matriz de Costos y Precios de Venta Sugeridos")
+            # VISTA COMERCIAL UNITARIA
+            st.subheader("📋 Matriz de Costos y Precios de Venta UNITARIOS Sugeridos")
             vista_comercial = df_resultado[[
-                'item', 'moneda_origen', 'precio_origen', 'costo_total_reposicion_ars', 
-                'margen_pretendido_pct', 'utilidad_pretendida_ars', 'precio_venta_neto_ars', 'iva_ventas_pct', 'precio_venta_final_con_iva_ars', 'factor_nacionalizacion'
+                'item', 'cantidad', 'precio_origen', 'costo_reposicion_unitario_ars', 
+                'margen_pretendido_pct', 'utilidad_neta_unitaria_ars', 'precio_venta_neto_unitario_ars', 'iva_ventas_pct', 'precio_venta_final_unitario_con_iva_ars', 'factor_nacionalizacion'
             ]].copy()
             
             st.dataframe(vista_comercial.style.format({
-                'precio_origen': '{:,.2f}', 'costo_total_reposicion_ars': 'ARS {:,.2f}',
-                'margen_pretendido_pct': '{:.1f}%', 'utilidad_pretendida_ars': 'ARS {:,.2f}',
-                'precio_venta_neto_ars': 'ARS {:,.2f}', 'iva_ventas_pct': '{:.1f}%', 'precio_venta_final_con_iva_ars': 'ARS {:,.2f}',
+                'precio_origen': '{:,.2f}', 'costo_reposicion_unitario_ars': 'ARS {:,.2f}',
+                'margen_pretendido_pct': '{:.1f}%', 'utilidad_neta_unitaria_ars': 'ARS {:,.2f}',
+                'precio_venta_neto_unitario_ars': 'ARS {:,.2f}', 'iva_ventas_pct': '{:.1f}%', 'precio_venta_final_unitario_con_iva_ars': 'ARS {:,.2f}',
                 'factor_nacionalizacion': '{:.4f}'
             }), use_container_width=True)
             
             st.write("---")
-            st.subheader("📊 Análisis de Composición del Costo Real")
+            st.subheader("📊 Análisis de Composición del Costo Real de la Operación")
             
             componentes_costo = {
                 "FOB Reposición Real (Divisas)": df_resultado['fob_reposicion_real_ars'].sum(),
@@ -152,54 +174,3 @@ if uploaded_file is not None:
                 "Tasa Estadística": df_resultado['tasa_estadistica_ars'].sum(),
                 "Impuesto PAIS": df_resultado['impuesto_pais_ars'].sum(),
                 "Tasa de Rezago / Almacenaje": df_resultado['tasa_rezago_ars'].sum(),
-                "IVA (Aduana)": df_resultado['iva_ars'].sum(),
-                "IVA Adicional": df_resultado['iva_adicional_ars'].sum(),
-                "Anticipo de Ganancias": df_resultado['anticipo_ganancias_ars'].sum(),
-                "Percepción Ingresos Brutos": df_resultado['ingresos_brutos_ars'].sum(),
-                "Gastos de Despacho y Logística Local": df_resultado['total_gastos_locales_ars'].sum()
-            }
-            
-            df_pie = pd.DataFrame(list(componentes_costo.items()), columns=['Concepto', 'Monto_ARS'])
-            df_pie = df_pie[df_pie['Monto_ARS'] > 0]
-            
-            fig = px.pie(
-                df_pie, values='Monto_ARS', names='Concepto', 
-                title='Distribución Macroeconómica de la Inversión (En Pesos de Reposición Real)',
-                hole=0.4,
-                color_discrete_sequence=px.colors.qualitative.Pastel
-            )
-            fig.update_traces(textposition='inside', textinfo='percent+label')
-            st.plotly_chart(fig, use_container_width=True)
-            
-            with st.expander("🔍 Ver Sábana de Datos e Impuestos Detallados por Producto (Base Oficial)"):
-                st.dataframe(df_resultado.style.format(lambda x: f"{x:,.2f}" if isinstance(x, (int, float)) else x), use_container_width=True)
-                
-            st.subheader("💾 Exportar Resultados Comerciales")
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df_resultado.to_excel(writer, index=False, sheet_name='Estructura de Precios')
-            processed_data = output.getvalue()
-            
-            st.download_button(
-                label="📥 Descargar Master Excel De Costos y Precios (.xlsx)",
-                data=processed_data,
-                file_name='master_importacion_y_pricing.xlsx',
-                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            )
-            
-    except Exception as e:
-        st.error(f"Error procesando los datos: {e}")
-else:
-    st.info("💡 Subí un archivo CSV estructurado según la matriz de abajo para inicializar el motor de cálculo.")
-    st.subheader("📌 Plantilla de Ejemplo Requerida (`productos.csv`)")
-    ejemplo_df = pd.DataFrame({
-        'item': ['Item de Prueba 1', 'Item de Prueba 2', 'Item de Prueba 3'],
-        'moneda_origen': ['EUR', 'USD', 'USD'],
-        'precio_origen': [5000.00, 3200.00, 1500.00],
-        'flete_usd': [450.00, 300.00, 100.00],
-        'seguro_usd': [50.00, 30.00, 10.00],
-        'arancel_pct': [14.0, 0.0, 0.0],
-        'margen_pretendido_pct': [30.00, 25.00, 40.00],
-        'iva_ventas_pct': [21.0, 10.5, 0.0]
-    })
-    st.dataframe(ejemplo_df)
