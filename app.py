@@ -3,13 +3,11 @@ import pandas as pd
 import plotly.express as px
 import io
 
-# Configuración de la página de Streamlit
 st.set_page_config(page_title="Calculadora Avanzada de Importación", layout="wide", page_icon="📈")
 
 st.title("📈 Calculadora Avanzada de Costos de Importación, Reposición y Pricing")
 st.markdown("Herramienta corporativa con **Markup Inverso**, **IVA dinámico** y **Estrategia Cambiaria de Fletes**.")
 
-# --- PANEL LATERAL: Parámetros Globales ---
 st.sidebar.header("💵 1. Variables Cambiarias y Multimoneda")
 dolar_oficial = st.sidebar.number_input("Dólar Oficial (Aduana / AFIP)", min_value=1.0, value=980.0, step=5.0)
 dolar_financiero = st.sidebar.number_input("Dólar Financiero / CCL (Reposición Real)", min_value=1.0, value=1280.0, step=5.0)
@@ -21,8 +19,7 @@ cny_usd = st.sidebar.number_input("Yuan Chino (CNY/USD)", min_value=0.01, value=
 st.sidebar.header("🚢 2. Modalidad de Pago de Logística Internacional")
 pago_logistica_afuera = st.sidebar.checkbox(
     "¿Flete y Seguro se pagan afuera / con dólares financieros propios?", 
-    value=True,
-    help="ACTIVADO: Valúa el flete/seguro al Dólar Financiero (Escenario Real/Libre). DESACTIVADO: Valúa el flete/seguro al Dólar Oficial."
+    value=True
 )
 
 st.sidebar.header("📐 3. Alícuotas Fiscales Globales (%)")
@@ -38,7 +35,6 @@ tasa_rezago_pct = st.sidebar.number_input("Tasa de Rezago / Almacenaje (% del CI
 gastos_despacho_fijos_ars = st.sidebar.number_input("Gastos Fijos Despacho/Terminal (ARS Total)", min_value=0.0, value=450000.0, step=10000.0)
 honorarios_despachante_pct = st.sidebar.number_input("Honorarios Despachante (% del CIF)", min_value=0.0, value=1.0, step=0.1)
 
-# --- LÓGICA CORE DE CÁLCULO ---
 def calcular_simulacion_completa(df_input):
     df = df_input.copy()
     
@@ -108,7 +104,6 @@ def calcular_simulacion_completa(df_input):
     
     return df
 
-# --- INTERFAZ CENTRAL ---
 uploaded_file = st.file_uploader("📂 Cargá tu archivo de productos (CSV)", type=["csv"])
 
 if uploaded_file is not None:
@@ -134,7 +129,7 @@ if uploaded_file is not None:
             
             st.write("---")
             
-            st.subheader("📋 Matriz de Costos y Precios de Venta Sugeridos (Margen sobre Precio)")
+            st.subheader("📋 Matriz de Costos y Precios de Venta Sugeridos")
             vista_comercial = df_resultado[[
                 'item', 'moneda_origen', 'precio_origen', 'costo_total_reposicion_ars', 
                 'margen_pretendido_pct', 'utilidad_pretendida_ars', 'precio_venta_neto_ars', 'iva_ventas_pct', 'precio_venta_final_con_iva_ars', 'factor_nacionalizacion'
@@ -177,3 +172,34 @@ if uploaded_file is not None:
             st.plotly_chart(fig, use_container_width=True)
             
             with st.expander("🔍 Ver Sábana de Datos e Impuestos Detallados por Producto (Base Oficial)"):
+                st.dataframe(df_resultado.style.format(lambda x: f"{x:,.2f}" if isinstance(x, (int, float)) else x), use_container_width=True)
+                
+            st.subheader("💾 Exportar Resultados Comerciales")
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df_resultado.to_excel(writer, index=False, sheet_name='Estructura de Precios')
+            processed_data = output.getvalue()
+            
+            st.download_button(
+                label="📥 Descargar Master Excel De Costos y Precios (.xlsx)",
+                data=processed_data,
+                file_name='master_importacion_y_pricing.xlsx',
+                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            
+    except Exception as e:
+        st.error(f"Error procesando los datos: {e}")
+else:
+    st.info("💡 Subí un archivo CSV estructurado según la matriz de abajo para inicializar el motor de cálculo.")
+    st.subheader("📌 Plantilla de Ejemplo Requerida (`productos.csv`)")
+    ejemplo_df = pd.DataFrame({
+        'item': ['Item de Prueba 1', 'Item de Prueba 2', 'Item de Prueba 3'],
+        'moneda_origen': ['EUR', 'USD', 'USD'],
+        'precio_origen': [5000.00, 3200.00, 1500.00],
+        'flete_usd': [450.00, 300.00, 100.00],
+        'seguro_usd': [50.00, 30.00, 10.00],
+        'arancel_pct': [14.0, 0.0, 0.0],
+        'margen_pretendido_pct': [30.00, 25.00, 40.00],
+        'iva_ventas_pct': [21.0, 10.5, 0.0]
+    })
+    st.dataframe(ejemplo_df)
