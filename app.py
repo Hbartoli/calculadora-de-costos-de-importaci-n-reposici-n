@@ -172,4 +172,4 @@ if uploaded_file is not None:
                 "Flete y Seguro Internacional": float(df_resultado['flete_seguro_real_ars'].sum()),
                 "Derechos de Importación": float(df_resultado['derechos_importacion_ars'].sum()),
                 "Tasa Estadística": float(df_resultado['tasa_estadistica_ars'].sum()),
-                "Impuesto PAIS": float(df_resultado['impuesto_pais_ars'].sum()),
+                "Impuesto PAIS": float(df_resultado['impuesto_pais_ars'].sum()),}
