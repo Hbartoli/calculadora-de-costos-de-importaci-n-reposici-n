@@ -164,7 +164,7 @@ if uploaded_file is not None:
                 'factor_nacionalizacion': '{:.4f}'
             }), use_container_width=True)
             
-            st.write("---")
+           st.write("---")
             st.subheader("📊 Análisis de Composición del Costo Real de la Operación")
             
             componentes_costo = {
@@ -173,3 +173,56 @@ if uploaded_file is not None:
                 "Derechos de Importación": float(df_resultado['derechos_importacion_ars'].sum()),
                 "Tasa Estadística": float(df_resultado['tasa_estadistica_ars'].sum()),
                 "Impuesto PAIS": float(df_resultado['impuesto_pais_ars'].sum()),
+                "Tasa de Rezago / Almacenaje": float(df_resultado['tasa_rezago_ars'].sum()),
+                "IVA (Aduana)": float(df_resultado['iva_ars'].sum()),
+                "IVA Adicional": float(df_resultado['iva_adicional_ars'].sum()),
+                "Anticipo de Ganancias": float(df_resultado['anticipo_ganancias_ars'].sum()),
+                "Percepción Ingresos Brutos": float(df_resultado['ingresos_brutos_ars'].sum()),
+                "Gastos de Despacho y Logística Local": float(df_resultado['total_gastos_locales_ars'].sum())
+            }
+            
+            df_pie = pd.DataFrame(list(componentes_costo.items()), columns=['Concepto', 'Monto_ARS'])
+            df_pie = df_pie[df_pie['Monto_ARS'] > 0]
+            
+            fig = px.pie(
+                df_pie, values='Monto_ARS', names='Concepto', 
+                title='Distribución de la Inversión Total (Lote Completo)',
+                hole=0.4,
+                color_discrete_sequence=px.colors.qualitative.Pastel
+            )
+            fig.update_traces(textposition='inside', textinfo='percent+label')
+            st.plotly_chart(fig, use_container_width=True)
+            
+            with st.expander("🔍 Ver Sábana de Datos Técnica Completa (Batch Completo en Pesos Oficiales)"):
+                st.dataframe(df_resultado.style.format(lambda x: f"{x:,.2f}" if isinstance(x, (int, float)) else x), use_container_width=True)
+                
+            st.subheader("💾 Exportar Resultados Comerciales")
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df_resultado.to_excel(writer, index=False, sheet_name='Pricing Unitario')
+            processed_data = output.getvalue()
+            
+            st.download_button(
+                label="📥 Descargar Master Excel De Costos y Precios (.xlsx)",
+                data=processed_data,
+                file_name='master_importacion_unitario.xlsx',
+                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            
+    except Exception as e:
+        st.error(f"Error procesando los datos: {e}")
+else:
+    st.info("💡 Subí un archivo CSV estructurado según la plantilla de abajo para prorratear costos por cantidad.")
+    st.subheader("📌 Plantilla de Ejemplo Requerida (`productos.csv`)")
+    ejemplo_df = pd.DataFrame({
+        'item': ['Remera Algodón', 'Zapatillas Deportivas'],
+        'cantidad':,
+        'moneda_origen': ['USD', 'USD'],
+        'precio_origen': [2.99, 15.50],
+        'flete_usd': [100.00, 250.00],
+        'seguro_usd': [10.00, 25.00],
+        'arancel_pct': [20.0, 35.0],
+        'margen_pretendido_pct': [50.0, 45.0],
+        'iva_ventas_pct': [21.0, 21.0]
+    })
+    st.dataframe(ejemplo_df)
