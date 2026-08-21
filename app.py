@@ -173,22 +173,3 @@ if uploaded_file is not None:
                 "Derechos de Importación": float(df_resultado['derechos_importacion_ars'].sum()),
                 "Tasa Estadística": float(df_resultado['tasa_estadistica_ars'].sum()),
                 "Impuesto PAIS": float(df_resultado['impuesto_pais_ars'].sum()),
-                "Tasa de Rezago / Almacenaje": float(df_resultado['tasa_rezago_ars'].sum()),
-                "IVA (Aduana)": float(df_resultado['iva_ars'].sum()),
-                "IVA Adicional": float(df_resultado['iva_adicional_ars'].sum()),
-                "Anticipo de Ganancias": float(df_resultado['anticipo_ganancias_ars'].sum()),
-                "Percepción Ingresos Brutos": float(df_resultado['ingresos_brutos_ars'].sum()),
-                "Gastos de Despacho y Logística Local": float(df_resultado['total_gastos_locales_ars'].sum())
-            }
-            
-            df_pie = pd.DataFrame(list(componentes_costo.items()), columns=['Concepto', 'Monto_ARS'])
-            df_pie = df_pie[df_pie['Monto_ARS'] > 0]
-            
-            fig = px.pie(
-                df_pie, values='Monto_ARS', names='Concepto', 
-                title='Distribución de la Inversión Total (Lote Completo)',
-                hole=0.4,
-                color_discrete_sequence=px.colors.qualitative.Pastel
-            )
-            fig.update_traces(textposition='inside', textinfo='percent+label')
-            st.plotly_chart(fig, use_container_width=True)
