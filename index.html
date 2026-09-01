@@ -378,24 +378,48 @@ function actualizarGraficos() {
         graficoCurvaInstance = new Chart(ctx1, {
             type: 'line',
             data: {
-            labels: unidadesSeq,
-            datasets: [
-                // ✅ CORREGIDO: Se eliminó la sintaxis rota de borderDash
-                { label: 'Costos Fijos Corporativos', data: cfFijos, borderColor: 'orange', borderDash: [], fill: false, pointRadius: 0 },
-                { label: 'Costos Totales (Netos)', data: costosMix, borderColor: 'red', fill: false, pointRadius: 0 },
-                { label: 'Ingresos Totales (Con IVA)', data: ingresosMix, borderColor: 'green', fill: false, pointRadius: 0 }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { title: { display: true, text: 'Curva de Equilibrio Basada en Margen Ponderado' } },
-            scales: {
-                x: { title: { display: true, text: 'Unidades Totales del Mix' } },
-                y: { title: { display: true, text: 'Dinero ($)' } }
+                            labels: unidadesSeq,
+                datasets: [
+                    { 
+                        label: 'Costos Fijos Corporativos', 
+                        data: cfFijos, 
+                        borderColor: 'orange', 
+                        borderDash: [], 
+                        fill: false, 
+                        pointRadius: 0 
+                    },
+                    { 
+                        label: 'Costos Totales (Netos)', 
+                        data: costosMix, 
+                        borderColor: 'red', 
+                        fill: false, 
+                        pointRadius: 0 
+                    },
+                    { 
+                        label: 'Ingresos Totales (Con IVA)', 
+                        data: ingresosMix, 
+                        borderColor: 'green', 
+                        fill: false, 
+                        pointRadius: 0 
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { 
+                    title: { 
+                        display: true, 
+                        text: 'Curva de Equilibrio Basada en Margen Ponderado' 
+                    } 
+                },
+                scales: {
+                    x: { title: { display: true, text: 'Unidades Totales del Mix' } },
+                    y: { title: { display: true, text: 'Dinero ($)' } }
+                }
             }
-        }
-    });
+        });
+    }
 }
 
 // Tab 2: Gráfico de Barras (Escenarios de estrés)
@@ -409,15 +433,30 @@ if (canvas2) {
         data: {
             labels: datosSensibilidadGuardados.map(d => d.escenario),
             datasets: [
-                { label: 'Costos Fijos Estresados', data: datosSensibilidadGuardados.map(d => d.cf), backgroundColor: 'orange' },
-                { label: 'Facturación Mínima de Equilibrio', data: datosSensibilidadGuardados.map(d => d.fact === Infinity ? 0 : d.fact), backgroundColor: 'crimson' }
+                { 
+                    label: 'Costos Fijos Estresados', 
+                    data: datosSensibilidadGuardados.map(d => d.cf), 
+                    backgroundColor: 'orange' 
+                },
+                { 
+                    label: 'Facturación Mínima de Equilibrio', 
+                    data: datosSensibilidadGuardados.map(d => d.fact === Infinity ? 0 : d.fact), 
+                    backgroundColor: 'crimson' 
+                }
             ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { title: { display: true, text: 'Análisis Comparativo de Carga Financiera por Escenario de Estrés' } },
-            scales: { y: { title: { display: true, text: 'Dinero ($)' } } }
+            plugins: { 
+                title: { 
+                    display: true, 
+                    text: 'Análisis Comparativo de Carga Financiera por Escenario de Estrés' 
+                } 
+            },
+            scales: { 
+                y: { title: { display: true, text: 'Dinero ($)' } } 
+            }
         }
     });
 }
@@ -449,6 +488,7 @@ function actualizarSelectHistorial() {
     const select = document.getElementById("selectComparar");
     if (!select) return;
     select.innerHTML = "";
+    
     for (let k in historialSimulaciones) {
         const opt = document.createElement("option");
         opt.value = k;
@@ -510,3 +550,4 @@ function exportarExcel() {
     // @ts-ignore
     XLSX.writeFile(wb, "reporte_avanzado_equilibrio.xlsx");
 }
+
