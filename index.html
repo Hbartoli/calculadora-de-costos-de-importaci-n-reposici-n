@@ -367,6 +367,7 @@ function calcularTodo() {
 
             const card = document.createElement("div");
             card.className = "bg-white p-5 rounded-xl border border-gray-200 shadow-sm";
+            // CORREGIDO: Todo el bloque HTML queda encapsulado bajo un único par de backticks
             card.innerHTML = `
                 <h4 class="font-bold text-gray-800">📦 ${p.producto}</h4>
                 <p class="text-sm text-gray-500 mt-1">Punto de Equilibrio: <span class="text-blue-600 font-semibold">${uProdPe} u</span></p>
@@ -403,7 +404,6 @@ function cambiarTab(tabNum) {
 // --- RENDERIZADO DE GRÁFICOS (CHART.JS) ---
 function actualizarGraficos() {
     if (!calculosBase.peUnidadesGlobal) return;
-
     let maxUnidades = Math.max(Math.ceil(calculosBase.metaUnidadesGlobal * 1.5), 10);
     let unidadesSeq = Array.from({ length: maxUnidades + 1 }, (_, i) => i);
     let ingresosMix = unidadesSeq.map(u => u * calculosBase.precioPonderado);
@@ -557,3 +557,4 @@ function exportarExcel() {
     // @ts-ignore
     XLSX.writeFile(wb, "reporte_avanzado_equilibrio.xlsx");
 }
+
