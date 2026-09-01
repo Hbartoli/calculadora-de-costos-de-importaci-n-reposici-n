@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏦 Simulador Financiero Corporativo</title>
+    <!-- Tailwind CSS para Estilos Rápidos -->
+    <script src="https://tailwindcss.com"></script>
+    <!-- Chart.js para los Gráficos -->
+    <script src="https://jsdelivr.net"></script>
+    <!-- SheetJS para Exportar a Excel -->
+    <script src="https://cloudflare.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen">
+
+    <div class="flex flex-col md:flex-row min-h-screen">
+        
+        <!-- --- BARRA LATERAL: ENTRADA DE DATOS GLOBALES --- -->
+        <aside class="w-full md:w-80 bg-slate-900 text-white p-6 flex flex-col gap-6 shadow-xl">
+            <div>
+                <h2 class="text-xl font-bold border-b border-slate-700 pb-2 flex items-center gap-2">⚙️ Costos Fijos y Metas</h2>
+                <div class="mt-4 flex flex-col gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Costos Fijos Totales ($)</label>
+                        <input type="number" id="costosFijos" value="2000" step="100" min="0" class="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Meta de Ganancia Neta ($)</label>
+                        <input type="number" id="metaGanancia" value="1500" step="100" min="0" class="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">Impuesto / IVA (%)</label>
+                        <input type="number" id="porcentajeImpuesto" value="21" step="0.5" min="0" max="100" class="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+            </div>
+
+            <!-- GUARDADO Y COMPARACIÓN -->
+            <div class="border-t border-slate-700 pt-4">
+                <h3 class="text-md font-bold mb-2">💾 Guardar Escenario Actual</h3>
+                <input type="text" id="nombreSimulacion" value="Simulación Alfa" class="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-white mb-2 text-sm">
+                <button onclick="guardarEscenario()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded text-sm transition">💾 Guardar Configuración</button>
+                <div id="msgGuardado" class="text-green-400 text-xs mt-1 hidden"></div>
+            </div>
+
+            <div class="border-t border-slate-700 pt-4 flex-1">
+                <h3 class="text-md font-bold mb-2">🔄 Comparador Rápido</h3>
+                <label class="block text-xs text-slate-400 mb-1">Mantené presionado Ctrl para seleccionar varios:</label>
+                <select id="selectComparar" multiple onchange="actualizarComparador()" class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-white text-sm h-24 mb-2"></select>
+                <div class="overflow-x-auto text-xs">
+                    <table class="w-full text-left text-slate-300 border-collapse" id="tablaComparativa">
+                        <thead>
+                            <tr class="border-b border-slate-700">
+                                <th class="p-1">Escenario</th>
+                                <th class="p-1">CF</th>
+                                <th class="p-1">PE (u)</th>
+                                <th class="p-1">Meta (u)</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </aside>
+
+        <!-- --- CONTENIDO PRINCIPAL --- -->
+        <main class="flex-1 p-6 md:p-10 max-w-7xl mx-auto w-full">
+            <h1 class="text-3xl font-extrabold text-slate-800 flex items-center gap-2">🏦 Simulador Financiero Corporativo</h1>
+            <p class="text-gray-600 mt-1">Herramienta avanzada para calcular el punto de equilibrio ponderado, proyectar escenarios de sensibilidad y comparar configuraciones de negocio.</p>
+            <hr class="my-6">
+
+            <!-- Mensajes de Alerta -->
+            <div id="alertaValidacion" class="hidden mb-6 p-4 rounded-lg bg-orange-100 border-l-4 border-orange-500 text-orange-700"></div>
+
+            <!-- --- CONFIGURACIÓN DE MULTI-PRODUCTOS --- -->
+            <section class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-8">
+                <h2 class="text-xl font-bold text-slate-700 mb-1">📦 Configuración de Productos (Mezcla de Ventas)</h2>
+                <p class="text-sm text-gray-500 mb-4">Definí el precio, costo variable y la proporción de ventas correspondiente a cada producto. La suma del Share de Ventas debe dar exactamente 100%.</p>
+                
+                <div class="overflow-x-auto">
+                    <table class="w-full border-collapse text-left text-sm" id="tablaProductos">
+                        <thead>
+                            <tr class="bg-gray-100 text-gray-600 font-semibold uppercase text-xs border-b border-gray-200">
+                                <th class="p-3">Producto</th>
+                                <th class="p-3">Precio Venta ($)</th>
+                                <th class="p-3">Costo Variable ($)</th>
+                                <th class="p-3">Share de Ventas (%)</th>
+                                <th class="p-3">Margen Neto ($)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            <!-- Filas dinámicas inyectadas por JS -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-4 flex gap-2">
+                    <button onclick="agregarFila()" class="bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold py-1.5 px-3 rounded">+ Añadir Producto</button>
+                    <button onclick="calcularTodo()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-1.5 px-3 rounded">🔄 Recalcular Tablas</button>
+                </div>
+            </section>
+
+            <!-- --- ANÁLISIS DE SENSIBILIDAD AUTOMÁTICO --- -->
+            <section class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-8">
+                <h2 class="text-xl font-bold text-slate-700 mb-4">⚡ Análisis de Sensibilidad Automático (Impacto en Volumen)</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full border-collapse text-left text-sm" id="tablaSensibilidad">
+                        <thead>
+                            <tr class="bg-gray-100 text-gray-600 font-semibold uppercase text-xs border-b border-gray-200">
+                                <th class="p-3">Escenario</th>
+                                <th class="p-3">Costos Fijos Ajustados</th>
+                                <th class="p-3">PE Global Mínimo</th>
+                                <th class="p-3">Ventas para Meta</th>
+                                <th class="p-3">Facturación de Equilibrio</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- --- DESGLOSE DE DISTRIBUCIÓN ESPECÍFICA --- -->
+            <section class="mb-8">
+                <h2 class="text-xl font-bold text-slate-700 mb-1">📊 Distribución Comercial en Punto de Equilibrio Real</h2>
+                <p class="text-sm text-gray-500 mb-4">Unidades exactas de cada producto que componen tu mix comercial para cubrir costos:</p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="contenedorKpis">
+                    <!-- Cards dinámicas inyectadas por JS -->
+                </div>
+            </section>
+
+            <!-- --- RENDERS GRÁFICOS DINÁMICOS (TABS) --- -->
+            <section class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-8">
+                <div class="flex border-b border-gray-200 mb-4">
+                    <button id="btnTab1" onclick="cambiarTab(1)" class="py-2 px-4 font-semibold text-sm border-b-2 border-blue-500 text-blue-600">📈 Curva de Operación Mix Comercial</button>
+                    <button id="btnTab2" onclick="cambiarTab(2)" class="py-2 px-4 font-semibold text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700">📊 Desglose de Egresos por Escenario</button>
+                </div>
+                <div>
+                    <div id="tab1" class="h-[400px]">
+                        <canvas id="graficoCurva"></canvas>
+                    </div>
+                    <div id="tab2" class="h-[400px] hidden">
+                        <canvas id="graficoBarras"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <hr class="my-6">
+            <!-- EXPORTACIONES -->
+            <section class="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-700">📥 Exportación Consolidada de Datos</h2>
+                </div>
+                <button onclick="exportarExcel()" class="bg-green-700 hover:bg-green-800 text-white font-bold py-2.5 px-5 rounded-lg flex items-center gap-2 transition text-sm">
+                    📥 Descargar Reporte de Escenarios Completo (Excel)
+                </button>
+// --- DATOS INICIALES ---
+let productos = [
+    { producto: "Producto Premium", precio: 150.0, costo: 60.0, share: 30.0 },
+    { producto: "Producto Estándar", precio: 80.0, costo: 30.0, share: 50.0 },
+    { producto: "Producto Económico", precio: 40.0, costo: 20.0, share: 20.0 }
+];
+
+let historialSimulaciones = {};
+let graficoCurvaInstance = null;
+let graficoBarrasInstance = null;
+let calculosBase = {};
+let datosSensibilidadGuardados = [];
+
+// Inicializar la App
+window.onload = function () {
+    renderizarTablaProductos();
+    calcularTodo();
+
+    // Listeners para la barra lateral
+    document.getElementById('costosFijos').addEventListener('input', calcularTodo);
+    document.getElementById('metaGanancia').addEventListener('input', calcularTodo);
+    document.getElementById('porcentajeImpuesto').addEventListener('input', calcularTodo);
+};
+
+// ✅ CORREGIDO: Renderiza inputs dinámicos para que la tabla sea interactiva
+function renderizarTablaProductos() {
+    const tbody = document.querySelector("#tablaProductos tbody");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+
+    productos.forEach((p, idx) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td><input type="text" class="form-control" value="${p.producto}" onchange="actualizarDato(${idx}, 'producto', this.value)"></td>
+            <td><input type="number" class="form-control" value="${p.precio}" oninput="actualizarDato(${idx}, 'precio', parseFloat(this.value) || 0)"></td>
+            <td><input type="number" class="form-control" value="${p.costo}" oninput="actualizarDato(${idx}, 'costo', parseFloat(this.value) || 0)"></td>
+            <td><input type="number" class="form-control" value="${p.share}" oninput="actualizarDato(${idx}, 'share', parseFloat(this.value) || 0)"></td>
+            <td id="margenNeto-${idx}">$0.00</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function agregarFila() {
+    productos.push({ producto: "Nuevo Producto", precio: 100, costo: 50, share: 0 });
+    renderizarTablaProductos();
+    calcularTodo();
+}
+
+function actualizarDato(idx, campo, valor) {
+    productos[idx][campo] = valor;
+    // Si cambiamos el share, dejamos que calcularTodo valide si suma 100%
+    if (campo !== 'producto') {
+        calcularTodo();
+    }
+}
+
+// ✅ CORREGIDO: Lógica impositiva del IVA (desglose neto) y optimización matemática
+function calcularTodo() {
+    const costosFijos = parseFloat(document.getElementById("costosFijos").value) || 0;
+    const metaGanancia = parseFloat(document.getElementById("metaGanancia").value) || 0;
+    const porcentajeImpuesto = parseFloat(document.getElementById("porcentajeImpuesto").value) || 0;
+    
+    const alerta = document.getElementById("alertaValidacion");
+    if (!alerta) return;
+    
+    alerta.classList.add("hidden");
+    alerta.className = "mb-6 p-4 rounded-lg text-orange-700 bg-orange-100 border-l-4 border-orange-500";
+
+    // 1. Validar Share de Ventas
+    let totalShare = productos.reduce((sum, p) => sum + (p.share || 0), 0);
+    if (Math.abs(totalShare - 100.0) > 0.01) {
+        alerta.innerHTML = `⚠ La suma del Share de Ventas actual es **${totalShare.toFixed(1)}%**. Debe ser exactamente **100%** para procesar los cálculos.`;
+        alerta.classList.remove("hidden");
+        return;
+    }
+
+    // 2. Calcular Margen Neto (Desglosando el IVA correctamente del precio)
+    let destruyeValor = false;
+    let margenNetoPonderado = 0;
+    let precioPonderado = 0;
+    let costoPonderado = 0;
+
+    productos.forEach((p, idx) => {
+        // El IVA se desglosa dividiendo por (1 + %/100) para obtener el precio neto real percibido por la empresa
+        let precioNetoIVA = p.precio / (1 + (porcentajeImpuesto / 100));
+        let margenNeto = precioNetoIVA - p.costo; 
+        
+        const celdaMargen = document.getElementById(`margenNeto-${idx}`);
+        if (celdaMargen) celdaMargen.innerText = `$${margenNeto.toFixed(2)}`;
+
+        if (margenNeto <= 0) destruyeValor = true;
+
+        let shareDecimal = p.share / 100;
+        margenNetoPonderado += margenNeto * shareDecimal;
+        precioPonderado += p.precio * shareDecimal; // Precio final de cara al público
+        costoPonderado += p.costo * shareDecimal;
+    });
+
+    if (destruyeValor) {
+        alerta.innerHTML = `⚠ Uno o más productos tienen un margen neto menor o igual a cero con la carga impositiva. Ajustá sus precios o costos.`;
+        alerta.className = "mb-6 p-4 rounded-lg text-red-700 bg-red-100 border-l-4 border-red-500";
+        alerta.classList.remove("hidden");
+        return;
+    }
+
+    // 3. Cálculos de punto de equilibrio globales
+    let peUnidadesGlobal = costosFijos / margenNetoPonderado;
+    let metaUnidadesGlobal = (costosFijos + metaGanancia) / margenNetoPonderado;
+
+    calculosBase = { costosFijos, metaGanancia, peUnidadesGlobal, metaUnidadesGlobal, precioPonderado, costoPonderado, margenNetoPonderado };
+
+    // 4. Análisis de Sensibilidad (Escenarios de estrés)
+    const escenarios = {
+        "📉 Pesimista (-15% precio, +10% costos fijos)": { fact_precio: 0.85, fact_cf: 1.10 },
+        "⚖ Esperado (Base Actual)": { fact_precio: 1.00, fact_cf: 1.00 },
+        "📈 Optimista (+10% precio, -5% costos fijos)": { fact_precio: 1.10, fact_cf: 0.95 }
+    };
+
+    const tbodySens = document.querySelector("#tablaSensibilidad tbody");
+    if (tbodySens) tbodySens.innerHTML = "";
+    datosSensibilidadGuardados = [];
+
+    for (let nom in escenarios) {
+        let vars = escenarios[nom];
+        let cfStresado = costosFijos * vars.fact_cf;
+        let margenPonderadoAlt = 0;
+        let precioPonderadoAlt = 0;
+
+        productos.forEach(p => {
+            let precioAlt = p.precio * vars.fact_precio;
+            let precioNetoIVAAlt = precioAlt / (1 + (porcentajeImpuesto / 100));
+            let margenNetoAlt = precioNetoIVAAlt - p.costo;
+
+            margenPonderadoAlt += margenNetoAlt * (p.share / 100);
+            precioPonderadoAlt += precioAlt * (p.share / 100);
+        });
+
+        let pe_u, meta_u, fact_equilibrio;
+        if (margenPonderadoAlt > 0) {
+            pe_u = cfStresado / margenPonderadoAlt;
+            meta_u = (cfStresado + metaGanancia) / margenPonderadoAlt;
+            fact_equilibrio = pe_u * precioPonderadoAlt;
+        } else {
+            pe_u = meta_u = fact_equilibrio = Infinity;
+        }
+
+        // ✅ CORREGIDO: Uso de Math.ceil para evitar errores en números enteros exactos
+        let pe_txt = pe_u !== Infinity ? Math.ceil(pe_u) + " u" : "Inviable";
+        let meta_txt = meta_u !== Infinity ? Math.ceil(meta_u) + " u" : "Inviable";
+        let fact_txt = fact_equilibrio !== Infinity ? `$${fact_equilibrio.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Inviable";
+
+        if (tbodySens) {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `<td>${nom}</td><td>$${cfStresado.toFixed(2)}</td><td>${pe_txt}</td><td>${meta_txt}</td><td>${fact_txt}</td>`;
+            tbodySens.appendChild(tr);
+        }
+
+        datosSensibilidadGuardados.push({ escenario: nom, cf: cfStresado, pe: pe_u, meta: meta_u, fact: fact_equilibrio });
+    }
+
+    // 5. Renderizar KPIs de distribución comercial
+    const contenedorKpis = document.getElementById("contenedorKpis");
+    if (contenedorKpis) {
+        contenedorKpis.innerHTML = "";
+        productos.forEach(p => {
+            let shareDecimal = p.share / 100;
+            // ✅ CORREGIDO: Redondeo hacia arriba con Math.ceil para el mix comercial
+            let uProdPe = Math.ceil(peUnidadesGlobal * shareDecimal);
+            let uProdMeta = Math.ceil(metaUnidadesGlobal * shareDecimal);
+
+            const card = document.createElement("div");
+            card.className = "bg-white p-5 rounded-xl border border-gray-200 shadow-sm";
+            card.innerHTML = `
+                <h3>📦 ${p.producto}</h3>
+                <p>Punto de Equilibrio: <strong>${uProdPe} u</strong></p>
+                <p>Volumen Objetivo: <strong>${uProdMeta} u</strong></p>
+            `;
+            contenedorKpis.appendChild(card);
+        });
+    }
+
+    // 6. Actualizar Gráficos
+    actualizarGraficos();
+}
+
+// --- SISTEMA DE TABS ---
+function cambiarTab(tabNum) {
+    const t1 = document.getElementById("tab1");
+    const t2 = document.getElementById("tab2");
+    const b1 = document.getElementById("btnTab1");
+    const b2 = document.getElementById("btnTab2");
+
+    if (tabNum === 1 && t1 && t2 && b1 && b2) {
+        t1.classList.remove("hidden");
+        t2.classList.add("hidden");
+        b1.className = "py-2 px-4 font-semibold text-sm border-b-2 border-blue-500 text-blue-600";
+        b2.className = "py-2 px-4 font-semibold text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700";
+    } else if (t1 && t2 && b1 && b2) {
+        t1.classList.add("hidden");
+        t2.classList.remove("hidden");
+        b1.className = "py-2 px-4 font-semibold text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700";
+        b2.className = "py-2 px-4 font-semibold text-sm border-b-2 border-blue-500 text-blue-600";
+    }
+}
+
+// --- GRÁFICOS ---
+function actualizarGraficos() {
+    if (!calculosBase.peUnidadesGlobal) return;
+
+    let maxUnidades = Math.max(Math.ceil(calculosBase.metaUnidadesGlobal * 1.5), 10);
+    let unidadesSeq = Array.from({ length: maxUnidades + 1 }, (_, i) => i);
+
+    let ingresosMix = unidadesSeq.map(u => u * calculosBase.precioPonderado);
+    let costosMix = unidadesSeq.map(u => calculosBase.costosFijos + (u * calculosBase.costoPonderado));
+    let cfFijos = unidadesSeq.map(() => calculosBase.costosFijos);
+
+    // Tab 1: Gráfico de Líneas (Curva de Operación)
+    if (graficoCurvaInstance) graficoCurvaInstance.destroy();
+    const canvas1 = document.getElementById('graficoCurva');
+    
+    if (canvas1) {
+        const ctx1 = canvas1.getContext('2d');
+        graficoCurvaInstance = new Chart(ctx1, {
+            type: 'line',
+            data: {
+            labels: unidadesSeq,
+            datasets: [
+                // ✅ CORREGIDO: Se eliminó la sintaxis rota de borderDash
+                { label: 'Costos Fijos Corporativos', data: cfFijos, borderColor: 'orange', borderDash: [], fill: false, pointRadius: 0 },
+                { label: 'Costos Totales (Netos)', data: costosMix, borderColor: 'red', fill: false, pointRadius: 0 },
+                { label: 'Ingresos Totales (Con IVA)', data: ingresosMix, borderColor: 'green', fill: false, pointRadius: 0 }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { title: { display: true, text: 'Curva de Equilibrio Basada en Margen Ponderado' } },
+            scales: {
+                x: { title: { display: true, text: 'Unidades Totales del Mix' } },
+                y: { title: { display: true, text: 'Dinero ($)' } }
+            }
+        }
+    });
+}
+
+// Tab 2: Gráfico de Barras (Escenarios de estrés)
+if (graficoBarrasInstance) graficoBarrasInstance.destroy();
+const canvas2 = document.getElementById('graficoBarras');
+
+if (canvas2) {
+    const ctx2 = canvas2.getContext('2d');
+    graficoBarrasInstance = new Chart(ctx2, {
+        type: 'bar',
+        data: {
+            labels: datosSensibilidadGuardados.map(d => d.escenario),
+            datasets: [
+                { label: 'Costos Fijos Estresados', data: datosSensibilidadGuardados.map(d => d.cf), backgroundColor: 'orange' },
+                { label: 'Facturación Mínima de Equilibrio', data: datosSensibilidadGuardados.map(d => d.fact === Infinity ? 0 : d.fact), backgroundColor: 'crimson' }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { title: { display: true, text: 'Análisis Comparativo de Carga Financiera por Escenario de Estrés' } },
+            scales: { y: { title: { display: true, text: 'Dinero ($)' } } }
+        }
+    });
+}
+
+// --- SISTEMA DE HISTORIAL Y COMPARADOR ---
+function guardarEscenario() {
+    if (!calculosBase.peUnidadesGlobal) return;
+    const nombreInput = document.getElementById("nombreSimulacion");
+    const nombre = nombreInput ? nombreInput.value : "Simulación";
+    
+    historialSimulaciones[nombre] = {
+        costos_fijos: calculosBase.costosFijos,
+        meta_ganancia: calculosBase.metaGanancia,
+        pe_unidades: calculosBase.peUnidadesGlobal,
+        meta_unidades: calculosBase.metaUnidadesGlobal,
+        productos: JSON.parse(JSON.stringify(productos))
+    };
+
+    const msg = document.getElementById("msgGuardado");
+    if (msg) {
+        msg.innerText = `¡'${nombre}' guardado!`;
+        msg.classList.remove("hidden");
+        setTimeout(() => msg.classList.add("hidden"), 3000);
+    }
+    actualizarSelectHistorial();
+}
+
+function actualizarSelectHistorial() {
+    const select = document.getElementById("selectComparar");
+    if (!select) return;
+    select.innerHTML = "";
+    for (let k in historialSimulaciones) {
+        const opt = document.createElement("option");
+        opt.value = k;
+        opt.innerText = k;
+        select.appendChild(opt);
+    }
+}
+
+function actualizarComparador() {
+    const select = document.getElementById("selectComparar");
+    const tbody = document.querySelector("#tablaComparativa tbody");
+    if (!select || !tbody) return;
+
+    const seleccionado = Array.from(select.selectedOptions).map(option => option.value);
+    tbody.innerHTML = "";
+
+    seleccionado.forEach(s => {
+        const sc = historialSimulaciones[s];
+        const tr = document.createElement("tr");
+        tr.className = "border-b border-slate-800";
+        tr.innerHTML = `
+            <td>${s}</td>
+            <td>$${sc.costos_fijos}</td>
+            <td>${Math.ceil(sc.pe_unidades)}u</td>
+            <td>${Math.ceil(sc.meta_unidades)}u</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+// --- EXPORTAR EXCEL CON HOJAS (SHEETJS) ---
+function exportarExcel() {
+    if (!calculosBase.peUnidadesGlobal) return;
+    // @ts-ignore
+    const wb = XLSX.utils.book_new();
+
+    const dataProd = productos.map(p => ({
+        "Producto": p.producto,
+        "Precio Venta ($)": p.precio,
+        "Costo Variable ($)": p.costo,
+        "Share de Ventas (%)": p.share
+    }));
+    // @ts-ignore
+    const ws1 = XLSX.utils.json_to_sheet(dataProd);
+    // @ts-ignore
+    XLSX.utils.book_append_sheet(wb, ws1, "Mix_Productos");
+
+    const dataSens = datosSensibilidadGuardados.map(d => ({
+        "Escenario": d.escenario,
+        "Costos Fijos Ajustados": d.cf,
+        "PE Global Mínimo": d.pe !== Infinity ? Math.ceil(d.pe) : "Inviable",
+        "Ventas para Meta": d.meta !== Infinity ? Math.ceil(d.meta) : "Inviable",
+        "Facturación de Equilibrio": d.fact !== Infinity ? d.fact : "Inviable"
+    }));
+    // @ts-ignore
+    const ws2 = XLSX.utils.json_to_sheet(dataSens);
+    // @ts-ignore
+    XLSX.utils.book_append_sheet(wb, ws2, "Analisis_Sensibilidad");
+    // @ts-ignore
+    XLSX.writeFile(wb, "reporte_avanzado_equilibrio.xlsx");
+}
