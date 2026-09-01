@@ -10,6 +10,9 @@
     <script src="https://jsdelivr.net"></script>
     <!-- SheetJS para Exportar a Excel -->
     <script src="https://cloudflare.com"></script>
+    <!--Para que la descarga de Excel funcione sin problemas, asegúrate de tener correctamente importada la librería externa SheetJS (XLSX) -->
+    <script src="https://jsdelivr.net"></script>
+
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans min-h-screen">
 
@@ -158,7 +161,6 @@ let productos = [
     { producto: "Producto Estándar", precio: 80.0, costo: 30.0, share: 50.0 },
     { producto: "Producto Económico", precio: 40.0, costo: 20.0, share: 20.0 }
 ];
-
 let historialSimulaciones = {};
 let graficoCurvaInstance = null;
 let graficoBarrasInstance = null;
@@ -166,29 +168,29 @@ let calculosBase = {};
 let datosSensibilidadGuardados = [];
 
 // Inicializar la App
-window.onload = function () {
+window.onload = function() {
     renderizarTablaProductos();
     calcularTodo();
-
-    // Listeners para la barra lateral
-    document.getElementById('costosFijos').addEventListener('input', calcularTodo);
-    document.getElementById('metaGanancia').addEventListener('input', calcularTodo);
-    document.getElementById('porcentajeImpuesto').addEventListener('input', calcularTodo);
 };
 
-// ✅ CORREGIDO: Renderiza inputs dinámicos para que la tabla sea interactiva
+// Listeners para la barra lateral
+document.getElementById("costosFijos").addEventListener("input", calcularTodo);
+document.getElementById("metaGanancia").addEventListener("input", calcularTodo);
+document.getElementById("porcentajeImpuesto").addEventListener("input", calcularTodo);
+
+// CORREGIDO: Renderiza inputs dinámicos con backticks (`)
 function renderizarTablaProductos() {
     const tbody = document.querySelector("#tablaProductos tbody");
     if (!tbody) return;
     tbody.innerHTML = "";
-
+    
     productos.forEach((p, idx) => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
             <td><input type="text" class="form-control" value="${p.producto}" onchange="actualizarDato(${idx}, 'producto', this.value)"></td>
-            <td><input type="number" class="form-control" value="${p.precio}" oninput="actualizarDato(${idx}, 'precio', parseFloat(this.value) || 0)"></td>
-            <td><input type="number" class="form-control" value="${p.costo}" oninput="actualizarDato(${idx}, 'costo', parseFloat(this.value) || 0)"></td>
-            <td><input type="number" class="form-control" value="${p.share}" oninput="actualizarDato(${idx}, 'share', parseFloat(this.value) || 0)"></td>
+            <td><input type="number" class="form-control" value="${p.precio}" onchange="actualizarDato(${idx}, 'precio', this.value)"></td>
+            <td><input type="number" class="form-control" value="${p.costo}" onchange="actualizarDato(${idx}, 'costo', this.value)"></td>
+            <td><input type="number" class="form-control" value="${p.share}" onchange="actualizarDato(${idx}, 'share', this.value)"></td>
             <td id="margenNeto-${idx}">$0.00</td>
         `;
         tbody.appendChild(tr);
@@ -202,59 +204,62 @@ function agregarFila() {
 }
 
 function actualizarDato(idx, campo, valor) {
-    productos[idx][campo] = valor;
+    productos[idx][campo] = campo === 'producto' ? valor : parseFloat(valor) || 0;
     // Si cambiamos el share, dejamos que calcularTodo valide si suma 100%
     if (campo !== 'producto') {
         calcularTodo();
     }
 }
 
-// ✅ CORREGIDO: Lógica impositiva del IVA (desglose neto) y optimización matemática
+// OPTIMIZACIÓN MATEMÁTICA Y LÓGICA
 function calcularTodo() {
     const costosFijos = parseFloat(document.getElementById("costosFijos").value) || 0;
     const metaGanancia = parseFloat(document.getElementById("metaGanancia").value) || 0;
     const porcentajeImpuesto = parseFloat(document.getElementById("porcentajeImpuesto").value) || 0;
     
     const alerta = document.getElementById("alertaValidacion");
-    if (!alerta) return;
-    
-    alerta.classList.add("hidden");
-    alerta.className = "mb-6 p-4 rounded-lg text-orange-700 bg-orange-100 border-l-4 border-orange-500";
+    if (alerta) alerta.classList.add("hidden");
 
     // 1. Validar Share de Ventas
     let totalShare = productos.reduce((sum, p) => sum + (p.share || 0), 0);
     if (Math.abs(totalShare - 100.0) > 0.01) {
-        alerta.innerHTML = `⚠ La suma del Share de Ventas actual es **${totalShare.toFixed(1)}%**. Debe ser exactamente **100%** para procesar los cálculos.`;
-        alerta.classList.remove("hidden");
+        if (alerta) {
+            alerta.className = "mb-6 p-4 rounded-lg text-orange-700 bg-orange-100 border-l-4 border-orange-500";
+            alerta.innerHTML = `⚠️ La suma del Share de Ventas actual es <b>${totalShare.toFixed(1)}%</b>. Debe ser exactamente 100% para procesar los cálculos.`;
+            alerta.classList.remove("hidden");
+        }
         return;
     }
 
-    // 2. Calcular Margen Neto (Desglosando el IVA correctamente del precio)
+    // 2. Calcular Margen Neto desglosando el IVA correctamente
     let destruyeValor = false;
     let margenNetoPonderado = 0;
     let precioPonderado = 0;
     let costoPonderado = 0;
 
     productos.forEach((p, idx) => {
-        // El IVA se desglosa dividiendo por (1 + %/100) para obtener el precio neto real percibido por la empresa
         let precioNetoIVA = p.precio / (1 + (porcentajeImpuesto / 100));
-        let margenNeto = precioNetoIVA - p.costo; 
+        let margenNeto = precioNetoIVA - p.costo;
         
         const celdaMargen = document.getElementById(`margenNeto-${idx}`);
-        if (celdaMargen) celdaMargen.innerText = `$${margenNeto.toFixed(2)}`;
+        if (celdaMargen) {
+            celdaMargen.innerText = `$${margenNeto.toFixed(2)}`;
+        }
 
         if (margenNeto <= 0) destruyeValor = true;
 
         let shareDecimal = p.share / 100;
         margenNetoPonderado += margenNeto * shareDecimal;
-        precioPonderado += p.precio * shareDecimal; // Precio final de cara al público
+        precioPonderado += p.precio * shareDecimal;
         costoPonderado += p.costo * shareDecimal;
     });
 
     if (destruyeValor) {
-        alerta.innerHTML = `⚠ Uno o más productos tienen un margen neto menor o igual a cero con la carga impositiva. Ajustá sus precios o costos.`;
-        alerta.className = "mb-6 p-4 rounded-lg text-red-700 bg-red-100 border-l-4 border-red-500";
-        alerta.classList.remove("hidden");
+        if (alerta) {
+            alerta.className = "mb-6 p-4 rounded-lg text-red-700 bg-red-100 border-l-4 border-red-500";
+            alerta.innerHTML = "⚠️ Uno o más productos tienen un margen neto menor o igual a cero con la carga impositiva. Ajustá sus precios o costos.";
+            alerta.classList.remove("hidden");
+        }
         return;
     }
 
@@ -262,73 +267,82 @@ function calcularTodo() {
     let peUnidadesGlobal = costosFijos / margenNetoPonderado;
     let metaUnidadesGlobal = (costosFijos + metaGanancia) / margenNetoPonderado;
 
-    calculosBase = { costosFijos, metaGanancia, peUnidadesGlobal, metaUnidadesGlobal, precioPonderado, costoPonderado, margenNetoPonderado };
+    calculosBase = {
+        costosFijos,
+        metaGanancia,
+        peUnidadesGlobal,
+        metaUnidadesGlobal,
+        precioPonderado,
+        costoPonderado,
+        margenNetoPonderado
+    };
 
     // 4. Análisis de Sensibilidad (Escenarios de estrés)
     const escenarios = {
-        "📉 Pesimista (-15% precio, +10% costos fijos)": { fact_precio: 0.85, fact_cf: 1.10 },
-        "⚖ Esperado (Base Actual)": { fact_precio: 1.00, fact_cf: 1.00 },
-        "📈 Optimista (+10% precio, -5% costos fijos)": { fact_precio: 1.10, fact_cf: 0.95 }
+        "Pesimista (-15% precio, +10% costos fijos)": { fact_precio: 0.85, fact_cf: 1.10 },
+        "Esperado (Base actual)": { fact_precio: 1.00, fact_cf: 1.00 },
+        "Optimista (+10% precio, -5% costos fijos)": { fact_precio: 1.10, fact_cf: 0.95 }
     };
 
     const tbodySens = document.querySelector("#tablaSensibilidad tbody");
-    if (tbodySens) tbodySens.innerHTML = "";
-    datosSensibilidadGuardados = [];
+    if (tbodySens) {
+        tbodySens.innerHTML = "";
+        datosSensibilidadGuardados = [];
 
-    for (let nom in escenarios) {
-        let vars = escenarios[nom];
-        let cfStresado = costosFijos * vars.fact_cf;
-        let margenPonderadoAlt = 0;
-        let precioPonderadoAlt = 0;
+        for (let name in escenarios) {
+            let cfEstresado = costosFijos * escenarios[name].fact_cf;
+            let margenPonderadoAlt = 0;
 
-        productos.forEach(p => {
-            let precioAlt = p.precio * vars.fact_precio;
-            let precioNetoIVAAlt = precioAlt / (1 + (porcentajeImpuesto / 100));
-            let margenNetoAlt = precioNetoIVAAlt - p.costo;
+            productos.forEach(p => {
+                let precioNetoIVAAlt = (p.precio * escenarios[name].fact_precio) / (1 + (porcentajeImpuesto / 100));
+                let margenNetoAlt = precioNetoIVAAlt - p.costo;
+                margenPonderadoAlt += margenNetoAlt * (p.share / 100);
+            });
 
-            margenPonderadoAlt += margenNetoAlt * (p.share / 100);
-            precioPonderadoAlt += precioAlt * (p.share / 100);
-        });
+            let pe_u = margenPonderadoAlt > 0 ? cfEstresado / margenPonderadoAlt : Infinity;
+            let meta_u = margenPonderadoAlt > 0 ? (cfEstresado + metaGanancia) / margenPonderadoAlt : Infinity;
+            
+            let fact_equilibrio = pe_u * precioPonderado;
 
-        let pe_u, meta_u, fact_equilibrio;
-        if (margenPonderadoAlt > 0) {
-            pe_u = cfStresado / margenPonderadoAlt;
-            meta_u = (cfStresado + metaGanancia) / margenPonderadoAlt;
-            fact_equilibrio = pe_u * precioPonderadoAlt;
-        } else {
-            pe_u = meta_u = fact_equilibrio = Infinity;
-        }
+            let pe_txt = pe_u === Infinity ? "Inviable" : Math.ceil(pe_u) + " u";
+            let meta_txt = meta_u === Infinity ? "Inviable" : Math.ceil(meta_u) + " u";
+            let fact_txt = fact_equilibrio === Infinity ? "Inviable" : `$${fact_equilibrio.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-        // ✅ CORREGIDO: Uso de Math.ceil para evitar errores en números enteros exactos
-        let pe_txt = pe_u !== Infinity ? Math.ceil(pe_u) + " u" : "Inviable";
-        let meta_txt = meta_u !== Infinity ? Math.ceil(meta_u) + " u" : "Inviable";
-        let fact_txt = fact_equilibrio !== Infinity ? `$${fact_equilibrio.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Inviable";
-
-        if (tbodySens) {
             const tr = document.createElement("tr");
-            tr.innerHTML = `<td>${nom}</td><td>$${cfStresado.toFixed(2)}</td><td>${pe_txt}</td><td>${meta_txt}</td><td>${fact_txt}</td>`;
+            tr.innerHTML = `
+                <td><b>${name}</b></td>
+                <td>$${cfEstresado.toFixed(2)}</td>
+                <td>${pe_txt}</td>
+                <td>${meta_txt}</td>
+                <td>${fact_txt}</td>
+            `;
             tbodySens.appendChild(tr);
-        }
 
-        datosSensibilidadGuardados.push({ escenario: nom, cf: cfStresado, pe: pe_u, meta: meta_u, fact: fact_equilibrio });
+            datosSensibilidadGuardados.push({
+                escenario: name,
+                cf: cfEstresado,
+                pe_u: pe_u,
+                meta_u: meta_u,
+                fact_equilibrio: fact_equilibrio
+            });
+        }
     }
 
-    // 5. Renderizar KPIs de distribución comercial
+    // 5. Renderizar KPIs individuales redondeando hacia arriba
     const contenedorKpis = document.getElementById("contenedorKpis");
     if (contenedorKpis) {
         contenedorKpis.innerHTML = "";
         productos.forEach(p => {
             let shareDecimal = p.share / 100;
-            // ✅ CORREGIDO: Redondeo hacia arriba con Math.ceil para el mix comercial
             let uProdPe = Math.ceil(peUnidadesGlobal * shareDecimal);
             let uProdMeta = Math.ceil(metaUnidadesGlobal * shareDecimal);
 
             const card = document.createElement("div");
             card.className = "bg-white p-5 rounded-xl border border-gray-200 shadow-sm";
             card.innerHTML = `
-                <h3>📦 ${p.producto}</h3>
-                <p>Punto de Equilibrio: <strong>${uProdPe} u</strong></p>
-                <p>Volumen Objetivo: <strong>${uProdMeta} u</strong></p>
+                <h4 class="font-bold text-gray-800">${p.producto}</h4>
+                <p class="text-sm text-gray-500 mt-1">Punto de Equilibrio: <span class="text-blue-600 font-semibold">${uProdPe} u</span></p>
+                <p class="text-sm text-gray-500">Volumen Objetivo: <span class="text-green-600 font-semibold">${uProdMeta} u</span></p>
             `;
             contenedorKpis.appendChild(card);
         });
@@ -337,217 +351,3 @@ function calcularTodo() {
     // 6. Actualizar Gráficos
     actualizarGraficos();
 }
-
-// --- SISTEMA DE TABS ---
-function cambiarTab(tabNum) {
-    const t1 = document.getElementById("tab1");
-    const t2 = document.getElementById("tab2");
-    const b1 = document.getElementById("btnTab1");
-    const b2 = document.getElementById("btnTab2");
-
-    if (tabNum === 1 && t1 && t2 && b1 && b2) {
-        t1.classList.remove("hidden");
-        t2.classList.add("hidden");
-        b1.className = "py-2 px-4 font-semibold text-sm border-b-2 border-blue-500 text-blue-600";
-        b2.className = "py-2 px-4 font-semibold text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700";
-    } else if (t1 && t2 && b1 && b2) {
-        t1.classList.add("hidden");
-        t2.classList.remove("hidden");
-        b1.className = "py-2 px-4 font-semibold text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-700";
-        b2.className = "py-2 px-4 font-semibold text-sm border-b-2 border-blue-500 text-blue-600";
-    }
-}
-
-// --- GRÁFICOS ---
-function actualizarGraficos() {
-    if (!calculosBase.peUnidadesGlobal) return;
-
-    let maxUnidades = Math.max(Math.ceil(calculosBase.metaUnidadesGlobal * 1.5), 10);
-    let unidadesSeq = Array.from({ length: maxUnidades + 1 }, (_, i) => i);
-
-    let ingresosMix = unidadesSeq.map(u => u * calculosBase.precioPonderado);
-    let costosMix = unidadesSeq.map(u => calculosBase.costosFijos + (u * calculosBase.costoPonderado));
-    let cfFijos = unidadesSeq.map(() => calculosBase.costosFijos);
-
-    // Tab 1: Gráfico de Líneas (Curva de Operación)
-    if (graficoCurvaInstance) graficoCurvaInstance.destroy();
-    const canvas1 = document.getElementById('graficoCurva');
-    
-    if (canvas1) {
-        const ctx1 = canvas1.getContext('2d');
-        graficoCurvaInstance = new Chart(ctx1, {
-            type: 'line',
-            data: {
-                            labels: unidadesSeq,
-                datasets: [
-                    { 
-                        label: 'Costos Fijos Corporativos', 
-                        data: cfFijos, 
-                        borderColor: 'orange', 
-                        borderDash: [], 
-                        fill: false, 
-                        pointRadius: 0 
-                    },
-                    { 
-                        label: 'Costos Totales (Netos)', 
-                        data: costosMix, 
-                        borderColor: 'red', 
-                        fill: false, 
-                        pointRadius: 0 
-                    },
-                    { 
-                        label: 'Ingresos Totales (Con IVA)', 
-                        data: ingresosMix, 
-                        borderColor: 'green', 
-                        fill: false, 
-                        pointRadius: 0 
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { 
-                    title: { 
-                        display: true, 
-                        text: 'Curva de Equilibrio Basada en Margen Ponderado' 
-                    } 
-                },
-                scales: {
-                    x: { title: { display: true, text: 'Unidades Totales del Mix' } },
-                    y: { title: { display: true, text: 'Dinero ($)' } }
-                }
-            }
-        });
-    }
-}
-
-// Tab 2: Gráfico de Barras (Escenarios de estrés)
-if (graficoBarrasInstance) graficoBarrasInstance.destroy();
-const canvas2 = document.getElementById('graficoBarras');
-
-if (canvas2) {
-    const ctx2 = canvas2.getContext('2d');
-    graficoBarrasInstance = new Chart(ctx2, {
-        type: 'bar',
-        data: {
-            labels: datosSensibilidadGuardados.map(d => d.escenario),
-            datasets: [
-                { 
-                    label: 'Costos Fijos Estresados', 
-                    data: datosSensibilidadGuardados.map(d => d.cf), 
-                    backgroundColor: 'orange' 
-                },
-                { 
-                    label: 'Facturación Mínima de Equilibrio', 
-                    data: datosSensibilidadGuardados.map(d => d.fact === Infinity ? 0 : d.fact), 
-                    backgroundColor: 'crimson' 
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { 
-                title: { 
-                    display: true, 
-                    text: 'Análisis Comparativo de Carga Financiera por Escenario de Estrés' 
-                } 
-            },
-            scales: { 
-                y: { title: { display: true, text: 'Dinero ($)' } } 
-            }
-        }
-    });
-}
-
-// --- SISTEMA DE HISTORIAL Y COMPARADOR ---
-function guardarEscenario() {
-    if (!calculosBase.peUnidadesGlobal) return;
-    const nombreInput = document.getElementById("nombreSimulacion");
-    const nombre = nombreInput ? nombreInput.value : "Simulación";
-    
-    historialSimulaciones[nombre] = {
-        costos_fijos: calculosBase.costosFijos,
-        meta_ganancia: calculosBase.metaGanancia,
-        pe_unidades: calculosBase.peUnidadesGlobal,
-        meta_unidades: calculosBase.metaUnidadesGlobal,
-        productos: JSON.parse(JSON.stringify(productos))
-    };
-
-    const msg = document.getElementById("msgGuardado");
-    if (msg) {
-        msg.innerText = `¡'${nombre}' guardado!`;
-        msg.classList.remove("hidden");
-        setTimeout(() => msg.classList.add("hidden"), 3000);
-    }
-    actualizarSelectHistorial();
-}
-
-function actualizarSelectHistorial() {
-    const select = document.getElementById("selectComparar");
-    if (!select) return;
-    select.innerHTML = "";
-    
-    for (let k in historialSimulaciones) {
-        const opt = document.createElement("option");
-        opt.value = k;
-        opt.innerText = k;
-        select.appendChild(opt);
-    }
-}
-
-function actualizarComparador() {
-    const select = document.getElementById("selectComparar");
-    const tbody = document.querySelector("#tablaComparativa tbody");
-    if (!select || !tbody) return;
-
-    const seleccionado = Array.from(select.selectedOptions).map(option => option.value);
-    tbody.innerHTML = "";
-
-    seleccionado.forEach(s => {
-        const sc = historialSimulaciones[s];
-        const tr = document.createElement("tr");
-        tr.className = "border-b border-slate-800";
-        tr.innerHTML = `
-            <td>${s}</td>
-            <td>$${sc.costos_fijos}</td>
-            <td>${Math.ceil(sc.pe_unidades)}u</td>
-            <td>${Math.ceil(sc.meta_unidades)}u</td>
-        `;
-        tbody.appendChild(tr);
-    });
-}
-
-// --- EXPORTAR EXCEL CON HOJAS (SHEETJS) ---
-function exportarExcel() {
-    if (!calculosBase.peUnidadesGlobal) return;
-    // @ts-ignore
-    const wb = XLSX.utils.book_new();
-
-    const dataProd = productos.map(p => ({
-        "Producto": p.producto,
-        "Precio Venta ($)": p.precio,
-        "Costo Variable ($)": p.costo,
-        "Share de Ventas (%)": p.share
-    }));
-    // @ts-ignore
-    const ws1 = XLSX.utils.json_to_sheet(dataProd);
-    // @ts-ignore
-    XLSX.utils.book_append_sheet(wb, ws1, "Mix_Productos");
-
-    const dataSens = datosSensibilidadGuardados.map(d => ({
-        "Escenario": d.escenario,
-        "Costos Fijos Ajustados": d.cf,
-        "PE Global Mínimo": d.pe !== Infinity ? Math.ceil(d.pe) : "Inviable",
-        "Ventas para Meta": d.meta !== Infinity ? Math.ceil(d.meta) : "Inviable",
-        "Facturación de Equilibrio": d.fact !== Infinity ? d.fact : "Inviable"
-    }));
-    // @ts-ignore
-    const ws2 = XLSX.utils.json_to_sheet(dataSens);
-    // @ts-ignore
-    XLSX.utils.book_append_sheet(wb, ws2, "Analisis_Sensibilidad");
-    // @ts-ignore
-    XLSX.writeFile(wb, "reporte_avanzado_equilibrio.xlsx");
-}
-
